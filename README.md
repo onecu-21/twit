@@ -7,7 +7,7 @@ A simple, fast compiled programming language powered by LLVM.
 - `print <<` and `input >>` built-in I/O
 ## Official Homepage
 ```
-twit.onecu.dev
+onecu.dev/twit
 ```
 ## Installation
 ### Linux
