@@ -1,0 +1,6 @@
+/home/gcp-server-key/twit/build/CMakeFiles/intrinsics_gen.dir
+/home/gcp-server-key/twit/build/CMakeFiles/omp_gen.dir
+/home/gcp-server-key/twit/build/CMakeFiles/acc_gen.dir
+/home/gcp-server-key/twit/build/CMakeFiles/twitc.dir
+/home/gcp-server-key/twit/build/CMakeFiles/edit_cache.dir
+/home/gcp-server-key/twit/build/CMakeFiles/rebuild_cache.dir
