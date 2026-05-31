@@ -1,7 +1,0 @@
-function main() = int {
-    new int x
-    print << "숫자 입력: "
-    input >> x
-    print << x
-    return 0
-}

@@ -1,0 +1,47 @@
+// Variable declaration
+new int a = 10
+new int b = 20
+
+// Function
+function add(int a, int b) = int {
+    return a + b
+}
+
+function main() = int {
+    // Basic output
+    print << "=== Twit Language Examples ==="
+
+    // Variables & arithmetic
+    new int a = 10
+    new int b = 20
+    new int c = add(a, b)
+    print << "10 + 20 ="
+    print << c
+
+    // if/else
+    if (c > 25) {
+        print << "c is greater than 25"
+    } else {
+        print << "c is less than or equal to 25"
+    }
+
+    // while loop
+    new int i = 0
+    while (i < 3) {
+        print << i
+        i = i + 1
+    }
+
+    // for loop
+    for (new int j = 0; j < 5; j + 1) {
+        print << j
+    }
+
+    // input
+    print << "Enter a number:"
+    new int n
+    input >> n
+    print << n
+
+    return 0
+}
