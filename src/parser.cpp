@@ -3,27 +3,17 @@
 
 Parser::Parser(std::vector<Token> tokens) : tokens(tokens), pos(0) {}
 
-Token Parser::current() {
-    return tokens[pos];
-}
-
-Token Parser::peek() {
-    return tokens[pos + 1];
-}
-
-Token Parser::consume() {
-    return tokens[pos++];
-}
+Token Parser::current() { return tokens[pos]; }
+Token Parser::peek() { return tokens[pos + 1]; }
+Token Parser::consume() { return tokens[pos++]; }
 
 Token Parser::expect(TokenType type) {
     if (current().type != type)
-        throw std::runtime_error("Unexpected token: " + current().value + " at line " + std::to_string(current().line));
+        throw std::runtime_error("Unexpected token: '" + current().value + "' at line " + std::to_string(current().line));
     return consume();
 }
 
-bool Parser::check(TokenType type) {
-    return current().type == type;
-}
+bool Parser::check(TokenType type) { return current().type == type; }
 
 Program Parser::parse() {
     Program program;
@@ -31,6 +21,8 @@ Program Parser::parse() {
         if (check(TokenType::IMPORT)) {
             consume();
             program.imports.push_back(expect(TokenType::IDENT).value);
+        } else if (check(TokenType::STRUCT)) {
+            program.structs.push_back(parseStruct());
         } else if (check(TokenType::FUNCTION)) {
             program.functions.push_back(parseFunction());
         } else {
@@ -38,6 +30,20 @@ Program Parser::parse() {
         }
     }
     return program;
+}
+
+std::unique_ptr<StructDecl> Parser::parseStruct() {
+    expect(TokenType::STRUCT);
+    auto s = std::make_unique<StructDecl>();
+    s->name = expect(TokenType::IDENT).value;
+    expect(TokenType::LBRACE);
+    while (!check(TokenType::RBRACE)) {
+        std::string type = consume().value;
+        std::string name = expect(TokenType::IDENT).value;
+        s->fields.push_back({type, name});
+    }
+    expect(TokenType::RBRACE);
+    return s;
 }
 
 std::unique_ptr<FunctionDecl> Parser::parseFunction() {
@@ -62,20 +68,21 @@ std::unique_ptr<FunctionDecl> Parser::parseFunction() {
 
 std::vector<std::unique_ptr<ASTNode>> Parser::parseBody() {
     std::vector<std::unique_ptr<ASTNode>> stmts;
-    while (!check(TokenType::RBRACE) && !check(TokenType::EOF_TOKEN)) {
+    while (!check(TokenType::RBRACE) && !check(TokenType::EOF_TOKEN))
         stmts.push_back(parseStatement());
-    }
     return stmts;
 }
 
 std::unique_ptr<ASTNode> Parser::parseStatement() {
-    if (check(TokenType::NEW))    return parseVarDecl();
-    if (check(TokenType::RETURN)) return parseReturn();
-    if (check(TokenType::IF))     return parseIf();
-    if (check(TokenType::WHILE))  return parseWhile();
-    if (check(TokenType::FOR))    return parseFor();
-    if (check(TokenType::PRINT))  return parsePrint();
-    if (check(TokenType::INPUT))  return parseInput();
+    if (check(TokenType::NEW))      return parseVarDecl();
+    if (check(TokenType::RETURN))   return parseReturn();
+    if (check(TokenType::IF))       return parseIf();
+    if (check(TokenType::WHILE))    return parseWhile();
+    if (check(TokenType::FOR))      return parseFor();
+    if (check(TokenType::PRINT))    return parsePrint();
+    if (check(TokenType::INPUT))    return parseInput();
+    if (check(TokenType::BREAK))    { consume(); return std::make_unique<BreakStmt>(); }
+    if (check(TokenType::CONTINUE)) { consume(); return std::make_unique<ContinueStmt>(); }
     auto expr = std::make_unique<ExprStmt>();
     expr->expr = parseExpr();
     return expr;
@@ -86,6 +93,11 @@ std::unique_ptr<ASTNode> Parser::parseVarDecl() {
     auto decl = std::make_unique<VarDeclStmt>();
     decl->type = consume().value;
     decl->name = expect(TokenType::IDENT).value;
+    if (check(TokenType::LBRACKET)) {
+        consume();
+        decl->arraySize = std::stoi(expect(TokenType::NUMBER).value);
+        expect(TokenType::RBRACKET);
+    }
     if (check(TokenType::EQUALS)) {
         consume();
         decl->init = parseExpr();
@@ -109,11 +121,23 @@ std::unique_ptr<ASTNode> Parser::parseIf() {
     expect(TokenType::LBRACE);
     stmt->thenBody = parseBody();
     expect(TokenType::RBRACE);
-    if (check(TokenType::ELSE)) {
+    while (check(TokenType::ELSE)) {
         consume();
-        expect(TokenType::LBRACE);
-        stmt->elseBody = parseBody();
-        expect(TokenType::RBRACE);
+        if (check(TokenType::IF)) {
+            consume();
+            expect(TokenType::LPAREN);
+            auto cond = parseExpr();
+            expect(TokenType::RPAREN);
+            expect(TokenType::LBRACE);
+            auto body = parseBody();
+            expect(TokenType::RBRACE);
+            stmt->elseIfs.push_back({std::move(cond), std::move(body)});
+        } else {
+            expect(TokenType::LBRACE);
+            stmt->elseBody = parseBody();
+            expect(TokenType::RBRACE);
+            break;
+        }
     }
     return stmt;
 }
@@ -167,13 +191,54 @@ std::unique_ptr<ASTNode> Parser::parseInput() {
 }
 
 std::unique_ptr<ASTNode> Parser::parseExpr() {
-    return parseComparison();
+    return parseAssign();
+}
+
+std::unique_ptr<ASTNode> Parser::parseAssign() {
+    if (check(TokenType::IDENT)) {
+        std::string name = tokens[pos].value;
+        int savedPos = pos;
+        consume();
+        if (check(TokenType::EQUALS) || check(TokenType::PLUSEQ) ||
+            check(TokenType::MINUSEQ) || check(TokenType::STAREQ) || check(TokenType::SLASHEQ)) {
+            std::string op = consume().value;
+            auto val = parseExpr();
+            auto assign = std::make_unique<AssignExpr>();
+            assign->name = name;
+            assign->op = op;
+            assign->value = std::move(val);
+            return assign;
+        }
+        pos = savedPos;
+    }
+    return parseOr();
+}
+
+std::unique_ptr<ASTNode> Parser::parseOr() {
+    auto left = parseAnd();
+    while (check(TokenType::OR)) {
+        std::string op = consume().value;
+        auto right = parseAnd();
+        left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
+    }
+    return left;
+}
+
+std::unique_ptr<ASTNode> Parser::parseAnd() {
+    auto left = parseComparison();
+    while (check(TokenType::AND)) {
+        std::string op = consume().value;
+        auto right = parseComparison();
+        left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
+    }
+    return left;
 }
 
 std::unique_ptr<ASTNode> Parser::parseComparison() {
     auto left = parseAddSub();
     while (check(TokenType::EQEQ) || check(TokenType::NEQ) ||
-           check(TokenType::LT)   || check(TokenType::GT)) {
+           check(TokenType::LT)   || check(TokenType::GT) ||
+           check(TokenType::LTE)  || check(TokenType::GTE)) {
         std::string op = consume().value;
         auto right = parseAddSub();
         left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
@@ -192,21 +257,74 @@ std::unique_ptr<ASTNode> Parser::parseAddSub() {
 }
 
 std::unique_ptr<ASTNode> Parser::parseMulDiv() {
-    auto left = parsePrimary();
-    while (check(TokenType::STAR) || check(TokenType::SLASH)) {
+    auto left = parseUnary();
+    while (check(TokenType::STAR) || check(TokenType::SLASH) || check(TokenType::PERCENT)) {
         std::string op = consume().value;
-        auto right = parsePrimary();
+        auto right = parseUnary();
         left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
     }
     return left;
+}
+
+std::unique_ptr<ASTNode> Parser::parseUnary() {
+    if (check(TokenType::NOT)) {
+        consume();
+        return std::make_unique<UnaryExpr>("!", parseUnary(), true);
+    }
+    if (check(TokenType::MINUS)) {
+        consume();
+        return std::make_unique<UnaryExpr>("-", parseUnary(), true);
+    }
+    if (check(TokenType::PLUSPLUS)) {
+        consume();
+        return std::make_unique<UnaryExpr>("++", parseUnary(), true);
+    }
+    if (check(TokenType::MINUSMINUS)) {
+        consume();
+        return std::make_unique<UnaryExpr>("--", parseUnary(), true);
+    }
+    return parsePostfix();
+}
+
+std::unique_ptr<ASTNode> Parser::parsePostfix() {
+    auto expr = parsePrimary();
+    if (check(TokenType::PLUSPLUS)) {
+        consume();
+        return std::make_unique<UnaryExpr>("++", std::move(expr), false);
+    }
+    if (check(TokenType::MINUSMINUS)) {
+        consume();
+        return std::make_unique<UnaryExpr>("--", std::move(expr), false);
+    }
+    if (check(TokenType::LBRACKET)) {
+        consume();
+        auto idx = std::make_unique<IndexExpr>();
+        if (auto* ident = dynamic_cast<IdentExpr*>(expr.get()))
+            idx->name = ident->name;
+        idx->index = parseExpr();
+        expect(TokenType::RBRACKET);
+        return idx;
+    }
+    return expr;
 }
 
 std::unique_ptr<ASTNode> Parser::parsePrimary() {
     if (check(TokenType::NUMBER)) {
         return std::make_unique<NumberExpr>(std::stoi(consume().value));
     }
+    if (check(TokenType::FLOAT_LIT)) {
+        return std::make_unique<FloatExpr>(std::stof(consume().value));
+    }
     if (check(TokenType::STRING_LIT)) {
         return std::make_unique<StringExpr>(consume().value);
+    }
+    if (check(TokenType::TRUE_LIT)) {
+        consume();
+        return std::make_unique<BoolExpr>(true);
+    }
+    if (check(TokenType::FALSE_LIT)) {
+        consume();
+        return std::make_unique<BoolExpr>(false);
     }
     if (check(TokenType::IDENT)) {
         std::string name = consume().value;
@@ -229,5 +347,5 @@ std::unique_ptr<ASTNode> Parser::parsePrimary() {
         expect(TokenType::RPAREN);
         return expr;
     }
-    throw std::runtime_error("Unexpected token in expression: " + current().value);
+    throw std::runtime_error("Unexpected token in expression: '" + current().value + "' at line " + std::to_string(current().line));
 }
