@@ -12,7 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt install -y cmake llvm-dev clang libclang-dev lld zlib1g-dev libgc-dev
+        run: |
+          sudo apt update -y
+          sudo apt install -y cmake llvm-14-dev clang-14 libclang-14-dev lld-14 zlib1g-dev libgc-dev
       - name: Build
         run: mkdir build && cd build && cmake .. && make -j$(nproc)
       - name: Upload artifact
@@ -26,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install LLVM
-        run: choco install llvm -y
+        run: choco install llvm --version=14.0.6 -y
       - name: Build
         run: |
           mkdir build
