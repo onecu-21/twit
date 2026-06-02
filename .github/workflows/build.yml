@@ -41,6 +41,8 @@ jobs:
         run: choco install llvm --version=14.0.6 --allow-downgrade -y
       - name: Find LLVM path
         run: dir "C:\Program Files\LLVM"
+      - name: Find LLVM cmake
+        run: dir "C:\Program Files\LLVM\lib"
       - name: Build
         run: |
           mkdir build
