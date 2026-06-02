@@ -32,35 +32,3 @@ jobs:
           asset_path: build/twitc
           asset_name: twit-linux
           asset_content_type: application/octet-stream
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install LLVM
-        run: choco install llvm --version=14.0.6 --allow-downgrade -y
-      - name: Find LLVM path
-        run: dir "C:\Program Files\LLVM"
-      - name: Find LLVM cmake
-        run: dir "C:\Program Files\LLVM\lib"
-      - name: Build
-        run: |
-          mkdir build
-          cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="C:/Program Files/LLVM/lib/cmake/llvm"
-          cmake --build . --config Release
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: twit-windows
-          path: build/Release/twitc.exe
-      - name: Upload to Release
-        if: github.event_name == 'release'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: build/Release/twitc.exe
-          asset_name: twit-windows.exe
-          asset_content_type: application/octet-stream
