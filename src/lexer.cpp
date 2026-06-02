@@ -68,6 +68,8 @@ Token Lexer::readIdent() {
         ident += current();
         advance();
     }
+    if (ident == "double") return {TokenType::DOUBLE, ident, line};
+    if (ident == "long")   return {TokenType::LONG,   ident, line};
     if (ident == "function") return {TokenType::FUNCTION,  ident, line};
     if (ident == "return")   return {TokenType::RETURN,    ident, line};
     if (ident == "new")      return {TokenType::NEW,       ident, line};
