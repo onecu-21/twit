@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install LLVM
-        run: choco install llvm --version=14.0.6 -y
+        run: choco install llvm --version=14.0.6 --allow-downgrade -y
       - name: Build
         run: |
           mkdir build
