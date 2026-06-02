@@ -10,13 +10,13 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: sudo apt install -y cmake llvm-dev clang libclang-dev lld zlib1g-dev libgc-dev
       - name: Build
         run: mkdir build && cd build && cmake .. && make -j$(nproc)
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: twit-linux
           path: build/twitc
@@ -24,7 +24,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install LLVM
         run: choco install llvm -y
       - name: Build
@@ -34,7 +34,7 @@ jobs:
           cmake .. -DCMAKE_BUILD_TYPE=Release
           cmake --build . --config Release
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: twit-windows
           path: build/Release/twitc.exe
