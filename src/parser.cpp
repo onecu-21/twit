@@ -20,7 +20,7 @@ Program Parser::parse() {
     while (!check(TokenType::EOF_TOKEN)) {
         if (check(TokenType::IMPORT)) {
             consume();
-            program.imports.push_back(expect(TokenType::IDENT).value);
+            program.imports.push_back(consume().value);
         } else if (check(TokenType::STRUCT)) {
             program.structs.push_back(parseStruct());
         } else if (check(TokenType::FUNCTION)) {

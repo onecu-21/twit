@@ -323,6 +323,21 @@ void CodeGen::handleImport(const std::string& lib) {
         declMath1("fabs");
         declMath2("pow");   declMath2("fmod");
     }
+    if (lib == "string") {
+        llvm::Type* i8ptr = llvm::Type::getInt8PtrTy(context);
+        llvm::Type* i32   = llvm::Type::getInt32Ty(context);
+        auto decl = [&](const std::string& name, llvm::Type* ret, std::vector<llvm::Type*> params) {
+            if (!module->getFunction(name)) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(ret, params, false);
+                llvm::Function::Create(ft, llvm::Function::ExternalLinkage, name, module.get());
+            }
+        };
+        decl("strlen",  i32,   {i8ptr});
+        decl("strcmp",  i32,   {i8ptr, i8ptr});
+        decl("strcat",  i8ptr, {i8ptr, i8ptr});
+        decl("strcpy",  i8ptr, {i8ptr, i8ptr});
+        decl("strstr",  i8ptr, {i8ptr, i8ptr});
+    }
 }
 
 void CodeGen::genStruct(StructDecl* s) {
