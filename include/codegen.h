@@ -3,6 +3,7 @@
 #include <map>
 #include <stack>
 #include <string>
+#include <vector>
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
@@ -23,6 +24,8 @@ private:
     std::unique_ptr<llvm::Module> module;
     std::map<std::string, llvm::Value*> namedValues;
     std::map<std::string, llvm::StructType*> structTypes;
+    std::map<std::string, std::vector<std::string>> currentStructFields;
+    std::vector<StructDecl*> currentStructs;
     std::stack<llvm::BasicBlock*> breakTargets;
     std::stack<llvm::BasicBlock*> continueTargets;
 

@@ -3,7 +3,7 @@
 #include <vector>
 #include <memory>
 #include "../include/lexer.h"
-
+//who the hell made windows
 struct ASTNode {
     virtual ~ASTNode() = default;
 };
@@ -62,6 +62,13 @@ struct IndexExpr : ASTNode {
 struct MemberExpr : ASTNode {
     std::unique_ptr<ASTNode> object;
     std::string member;
+};
+
+struct MemberAssignExpr : ASTNode {
+    std::string object;
+    std::string member;
+    std::string op;
+    std::unique_ptr<ASTNode> value;
 };
 
 struct AssignExpr : ASTNode {

@@ -1,8 +1,11 @@
-import string
+struct Point {
+    int x
+    int y
+}
 
 function main() = int {
-    new string s = "hello"
-    new int len = strlen(s)
-    print << len
+    new Point p
+    p.x = 10
+    print << p.x
     return 0
 }

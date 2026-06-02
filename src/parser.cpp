@@ -1,6 +1,6 @@
 #include "../include/parser.h"
 #include <stdexcept>
-
+//Windows sucks, MSVC sucks
 Parser::Parser(std::vector<Token> tokens) : tokens(tokens), pos(0) {}
 
 Token Parser::current() { return tokens[pos]; }
@@ -199,7 +199,23 @@ std::unique_ptr<ASTNode> Parser::parseAssign() {
         std::string name = tokens[pos].value;
         int savedPos = pos;
         consume();
-        if (check(TokenType::EQUALS) || check(TokenType::PLUSEQ) ||
+        // p.x = 10 같은 멤버 할당
+        if (check(TokenType::DOT)) {
+            consume();
+            std::string member = expect(TokenType::IDENT).value;
+            if (check(TokenType::EQUALS) || check(TokenType::PLUSEQ) ||
+                check(TokenType::MINUSEQ) || check(TokenType::STAREQ) || check(TokenType::SLASHEQ)) {
+                std::string op = consume().value;
+                auto val = parseExpr();
+                auto assign = std::make_unique<MemberAssignExpr>();
+                assign->object = name;
+                assign->member = member;
+                assign->op = op;
+                assign->value = std::move(val);
+                return assign;
+            }
+            pos = savedPos;
+        } else if (check(TokenType::EQUALS) || check(TokenType::PLUSEQ) ||
             check(TokenType::MINUSEQ) || check(TokenType::STAREQ) || check(TokenType::SLASHEQ)) {
             std::string op = consume().value;
             auto val = parseExpr();
@@ -208,8 +224,9 @@ std::unique_ptr<ASTNode> Parser::parseAssign() {
             assign->op = op;
             assign->value = std::move(val);
             return assign;
+        } else {
+            pos = savedPos;
         }
-        pos = savedPos;
     }
     return parseOr();
 }
@@ -304,6 +321,14 @@ std::unique_ptr<ASTNode> Parser::parsePostfix() {
         idx->index = parseExpr();
         expect(TokenType::RBRACKET);
         return idx;
+    }
+    while (check(TokenType::DOT)) {
+        consume();
+        std::string member = expect(TokenType::IDENT).value;
+        auto memberExpr = std::make_unique<MemberExpr>();
+        memberExpr->object = std::move(expr);
+        memberExpr->member = member;
+        expr = std::move(memberExpr);
     }
     return expr;
 }

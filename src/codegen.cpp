@@ -27,7 +27,6 @@ llvm::Type* CodeGen::getLLVMType(const std::string& type) {
     if (type == "char")   return llvm::Type::getInt8Ty(context);
     if (type == "string") return llvm::Type::getInt8PtrTy(context);
     if (type == "void")   return llvm::Type::getVoidTy(context);
-    // 구조체 타입
     if (structTypes.count(type)) return structTypes[type];
     throw std::runtime_error("Unknown type: " + type);
 }
@@ -68,6 +67,24 @@ llvm::Value* CodeGen::genExpr(ASTNode* node) {
             else throw std::runtime_error("Unknown assign op: " + n->op);
             builder.CreateStore(result, ptr);
         }
+        return val;
+    }
+    if (auto* n = dynamic_cast<MemberAssignExpr*>(node)) {
+        llvm::Value* ptr = namedValues[n->object];
+        if (!ptr) throw std::runtime_error("Unknown variable: " + n->object);
+        llvm::Type* structType = ptr->getType()->getPointerElementType();
+        auto structName = structType->getStructName().str();
+        int idx = 0;
+        for (auto& s : currentStructs) {
+            if (s->name == structName) {
+                for (int i = 0; i < (int)s->fields.size(); i++) {
+                    if (s->fields[i].second == n->member) { idx = i; break; }
+                }
+            }
+        }
+        llvm::Value* fieldPtr = builder.CreateStructGEP(structType, ptr, idx, n->member);
+        llvm::Value* val = genExpr(n->value.get());
+        builder.CreateStore(val, fieldPtr);
         return val;
     }
     if (auto* n = dynamic_cast<UnaryExpr*>(node)) {
@@ -116,13 +133,11 @@ llvm::Value* CodeGen::genExpr(ASTNode* node) {
         std::vector<llvm::Value*> args;
         for (auto& arg : n->args) {
             llvm::Value* v = genExpr(arg.get());
-            // float -> double 자동 변환 (math 함수용)
             if (fn->getFunctionType()->getParamType(args.size())->isDoubleTy() && v->getType()->isFloatTy())
                 v = builder.CreateFPExt(v, llvm::Type::getDoubleTy(context));
             args.push_back(v);
         }
-        llvm::Value* result = builder.CreateCall(fn, args, "calltmp");
-        return result;
+        return builder.CreateCall(fn, args, "calltmp");
     }
     if (auto* n = dynamic_cast<IndexExpr*>(node)) {
         llvm::Value* ptr = namedValues[n->name];
@@ -133,9 +148,32 @@ llvm::Value* CodeGen::genExpr(ASTNode* node) {
             {llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0), idx}, "idxtmp");
         return builder.CreateLoad(llvm::Type::getInt32Ty(context), elemPtr, "elemtmp");
     }
+    if (auto* n = dynamic_cast<MemberExpr*>(node)) {
+        auto* ident = dynamic_cast<IdentExpr*>(n->object.get());
+        if (!ident) throw std::runtime_error("Member access requires variable");
+        llvm::Value* ptr = namedValues[ident->name];
+        if (!ptr) throw std::runtime_error("Unknown variable: " + ident->name);
+        llvm::Type* structType = ptr->getType()->getPointerElementType();
+        auto structName = structType->getStructName().str();
+        int idx = 0;
+        std::string fieldType = "int";
+        for (auto& s : currentStructs) {
+            if (s->name == structName) {
+                for (int i = 0; i < (int)s->fields.size(); i++) {
+                    if (s->fields[i].second == n->member) {
+                        idx = i;
+                        fieldType = s->fields[i].first;
+                        break;
+                    }
+                }
+            }
+        }
+        llvm::Value* fieldPtr = builder.CreateStructGEP(structType, ptr, idx, n->member);
+        return builder.CreateLoad(getLLVMType(fieldType), fieldPtr);
+    }
     throw std::runtime_error("Unknown expression type");
 }
-
+//Fucking Windows
 void CodeGen::genStmt(ASTNode* node) {
     if (auto* n = dynamic_cast<VarDeclStmt*>(node)) {
         llvm::Type* type = getLLVMType(n->type);
@@ -346,6 +384,7 @@ void CodeGen::genStruct(StructDecl* s) {
         fields.push_back(getLLVMType(f.first));
     llvm::StructType* st = llvm::StructType::create(context, fields, s->name);
     structTypes[s->name] = st;
+    currentStructs.push_back(s);
 }
 
 void CodeGen::genFunction(FunctionDecl* fn) {
