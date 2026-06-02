@@ -22,6 +22,7 @@ private:
     llvm::IRBuilder<> builder;
     std::unique_ptr<llvm::Module> module;
     std::map<std::string, llvm::Value*> namedValues;
+    std::map<std::string, llvm::StructType*> structTypes;
     std::stack<llvm::BasicBlock*> breakTargets;
     std::stack<llvm::BasicBlock*> continueTargets;
 
@@ -29,4 +30,6 @@ private:
     llvm::Value* genExpr(ASTNode* node);
     void genStmt(ASTNode* node);
     void genFunction(FunctionDecl* fn);
+    void genStruct(StructDecl* s);
+    void handleImport(const std::string& lib);
 };

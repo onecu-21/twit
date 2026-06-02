@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
 
         // llc & clang
         std::string llcCmd   = "llc -relocation-model=pic " + llFile + " -o " + sFile;
-        std::string clangCmd = "clang -fPIE -pie " + sFile + " -o " + outputFile;
+        std::string clangCmd = "clang -fPIE -pie " + sFile + " -o " + outputFile + " -lm -lgc";
         system(llcCmd.c_str());
         system(clangCmd.c_str());
 

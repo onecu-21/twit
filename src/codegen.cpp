@@ -7,8 +7,11 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include <stdexcept>
+#include <gc/gc.h>
 
 CodeGen::CodeGen() : builder(context) {
+    GC_INIT();
+    GC_enable_incremental();
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
     llvm::InitializeNativeTargetAsmParser();
@@ -16,12 +19,16 @@ CodeGen::CodeGen() : builder(context) {
 }
 
 llvm::Type* CodeGen::getLLVMType(const std::string& type) {
+    if (type == "double") return llvm::Type::getDoubleTy(context);
+    if (type == "long")   return llvm::Type::getInt64Ty(context);
     if (type == "int")    return llvm::Type::getInt32Ty(context);
     if (type == "float")  return llvm::Type::getFloatTy(context);
     if (type == "bool")   return llvm::Type::getInt1Ty(context);
     if (type == "char")   return llvm::Type::getInt8Ty(context);
     if (type == "string") return llvm::Type::getInt8PtrTy(context);
     if (type == "void")   return llvm::Type::getVoidTy(context);
+    // 구조체 타입
+    if (structTypes.count(type)) return structTypes[type];
     throw std::runtime_error("Unknown type: " + type);
 }
 
@@ -54,7 +61,7 @@ llvm::Value* CodeGen::genExpr(ASTNode* node) {
         } else {
             llvm::Value* cur = builder.CreateLoad(type, ptr, n->name);
             llvm::Value* result;
-            if (n->op == "+=") result = builder.CreateAdd(cur, val, "addtmp");
+            if (n->op == "+=")      result = builder.CreateAdd(cur, val, "addtmp");
             else if (n->op == "-=") result = builder.CreateSub(cur, val, "subtmp");
             else if (n->op == "*=") result = builder.CreateMul(cur, val, "multmp");
             else if (n->op == "/=") result = builder.CreateSDiv(cur, val, "divtmp");
@@ -107,9 +114,15 @@ llvm::Value* CodeGen::genExpr(ASTNode* node) {
         llvm::Function* fn = module->getFunction(n->callee);
         if (!fn) throw std::runtime_error("Unknown function: " + n->callee);
         std::vector<llvm::Value*> args;
-        for (auto& arg : n->args)
-            args.push_back(genExpr(arg.get()));
-        return builder.CreateCall(fn, args, "calltmp");
+        for (auto& arg : n->args) {
+            llvm::Value* v = genExpr(arg.get());
+            // float -> double 자동 변환 (math 함수용)
+            if (fn->getFunctionType()->getParamType(args.size())->isDoubleTy() && v->getType()->isFloatTy())
+                v = builder.CreateFPExt(v, llvm::Type::getDoubleTy(context));
+            args.push_back(v);
+        }
+        llvm::Value* result = builder.CreateCall(fn, args, "calltmp");
+        return result;
     }
     if (auto* n = dynamic_cast<IndexExpr*>(node)) {
         llvm::Value* ptr = namedValues[n->name];
@@ -155,11 +168,12 @@ void CodeGen::genStmt(ASTNode* node) {
         for (auto& arg : n->args) {
             llvm::Value* val = genExpr(arg.get());
             llvm::Value* fmt;
-            if (val->getType()->isIntegerTy(32))      fmt = builder.CreateGlobalStringPtr("%d\n");
-            else if (val->getType()->isIntegerTy(1))  fmt = builder.CreateGlobalStringPtr("%d\n");
-            else if (val->getType()->isFloatTy())     fmt = builder.CreateGlobalStringPtr("%f\n");
-            else if (val->getType()->isPointerTy())   fmt = builder.CreateGlobalStringPtr("%s\n");
-            else                                      fmt = builder.CreateGlobalStringPtr("%d\n");
+            if (val->getType()->isIntegerTy(32))     fmt = builder.CreateGlobalStringPtr("%d\n");
+            else if (val->getType()->isIntegerTy(1)) fmt = builder.CreateGlobalStringPtr("%d\n");
+            else if (val->getType()->isFloatTy())    fmt = builder.CreateGlobalStringPtr("%f\n");
+            else if (val->getType()->isDoubleTy())   fmt = builder.CreateGlobalStringPtr("%f\n");
+            else if (val->getType()->isPointerTy())  fmt = builder.CreateGlobalStringPtr("%s\n");
+            else                                     fmt = builder.CreateGlobalStringPtr("%d\n");
             builder.CreateCall(printfFn, {fmt, val});
         }
         return;
@@ -183,18 +197,15 @@ void CodeGen::genStmt(ASTNode* node) {
         llvm::Function* fn = builder.GetInsertBlock()->getParent();
         llvm::Value* cond = genExpr(n->cond.get());
         cond = builder.CreateICmpNE(cond, llvm::ConstantInt::get(cond->getType(), 0), "ifcond");
-
         llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(context, "merge");
         llvm::BasicBlock* thenBB  = llvm::BasicBlock::Create(context, "then", fn);
         llvm::BasicBlock* nextBB  = n->elseIfs.empty() && n->elseBody.empty()
             ? mergeBB
             : llvm::BasicBlock::Create(context, "elif");
-
         builder.CreateCondBr(cond, thenBB, nextBB);
         builder.SetInsertPoint(thenBB);
         for (auto& s : n->thenBody) genStmt(s.get());
         if (!builder.GetInsertBlock()->getTerminator()) builder.CreateBr(mergeBB);
-
         for (size_t i = 0; i < n->elseIfs.size(); i++) {
             fn->getBasicBlockList().push_back(dynamic_cast<llvm::BasicBlock*>(nextBB));
             builder.SetInsertPoint(nextBB);
@@ -211,14 +222,12 @@ void CodeGen::genStmt(ASTNode* node) {
             if (!builder.GetInsertBlock()->getTerminator()) builder.CreateBr(mergeBB);
             nextBB = afterBB;
         }
-
         if (!n->elseBody.empty()) {
             fn->getBasicBlockList().push_back(dynamic_cast<llvm::BasicBlock*>(nextBB));
             builder.SetInsertPoint(nextBB);
             for (auto& s : n->elseBody) genStmt(s.get());
             if (!builder.GetInsertBlock()->getTerminator()) builder.CreateBr(mergeBB);
         }
-
         fn->getBasicBlockList().push_back(mergeBB);
         builder.SetInsertPoint(mergeBB);
         return;
@@ -248,10 +257,10 @@ void CodeGen::genStmt(ASTNode* node) {
     if (auto* n = dynamic_cast<ForStmt*>(node)) {
         llvm::Function* fn = builder.GetInsertBlock()->getParent();
         genStmt(n->init.get());
-        llvm::BasicBlock* condBB  = llvm::BasicBlock::Create(context, "forcond", fn);
-        llvm::BasicBlock* bodyBB  = llvm::BasicBlock::Create(context, "forbody");
+        llvm::BasicBlock* condBB   = llvm::BasicBlock::Create(context, "forcond", fn);
+        llvm::BasicBlock* bodyBB   = llvm::BasicBlock::Create(context, "forbody");
         llvm::BasicBlock* updateBB = llvm::BasicBlock::Create(context, "forupdate");
-        llvm::BasicBlock* afterBB = llvm::BasicBlock::Create(context, "forafter");
+        llvm::BasicBlock* afterBB  = llvm::BasicBlock::Create(context, "forafter");
         breakTargets.push(afterBB);
         continueTargets.push(updateBB);
         builder.CreateBr(condBB);
@@ -290,6 +299,40 @@ void CodeGen::genStmt(ASTNode* node) {
     throw std::runtime_error("Unknown statement type");
 }
 
+void CodeGen::handleImport(const std::string& lib) {
+    if (lib == "math") {
+        auto declMath1 = [&](const std::string& name) {
+            if (!module->getFunction(name)) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    llvm::Type::getDoubleTy(context),
+                    {llvm::Type::getDoubleTy(context)}, false);
+                llvm::Function::Create(ft, llvm::Function::ExternalLinkage, name, module.get());
+            }
+        };
+        auto declMath2 = [&](const std::string& name) {
+            if (!module->getFunction(name)) {
+                llvm::FunctionType* ft = llvm::FunctionType::get(
+                    llvm::Type::getDoubleTy(context),
+                    {llvm::Type::getDoubleTy(context), llvm::Type::getDoubleTy(context)}, false);
+                llvm::Function::Create(ft, llvm::Function::ExternalLinkage, name, module.get());
+            }
+        };
+        declMath1("sqrt");  declMath1("sin");   declMath1("cos");
+        declMath1("tan");   declMath1("log");   declMath1("log2");
+        declMath1("floor"); declMath1("ceil");  declMath1("round");
+        declMath1("fabs");
+        declMath2("pow");   declMath2("fmod");
+    }
+}
+
+void CodeGen::genStruct(StructDecl* s) {
+    std::vector<llvm::Type*> fields;
+    for (auto& f : s->fields)
+        fields.push_back(getLLVMType(f.first));
+    llvm::StructType* st = llvm::StructType::create(context, fields, s->name);
+    structTypes[s->name] = st;
+}
+
 void CodeGen::genFunction(FunctionDecl* fn) {
     std::vector<llvm::Type*> paramTypes;
     for (auto& p : fn->params)
@@ -311,6 +354,10 @@ void CodeGen::genFunction(FunctionDecl* fn) {
 }
 
 void CodeGen::generate(Program& program) {
+    for (auto& imp : program.imports)
+        handleImport(imp);
+    for (auto& s : program.structs)
+        genStruct(s.get());
     for (auto& fn : program.functions)
         genFunction(fn.get());
 }

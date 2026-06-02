@@ -7,7 +7,7 @@ find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 
-include_directories(${LLVM_INCLUDE_DIRS})
+include_directories(${LLVM_INCLUDE_DIRS} /usr/include/gc)
 add_definitions(${LLVM_DEFINITIONS})
 
 add_executable(twitc
@@ -27,4 +27,4 @@ llvm_map_components_to_libnames(llvm_libs
     codegen
 )
 
-target_link_libraries(twitc ${llvm_libs})
+target_link_libraries(twitc ${llvm_libs} gc)
