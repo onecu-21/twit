@@ -1,4 +1,4 @@
-name: Build
+name: Build and Release
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -22,6 +22,16 @@ jobs:
         with:
           name: twit-linux
           path: build/twitc
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: build/twitc
+          asset_name: twit-linux
+          asset_content_type: application/octet-stream
 
   build-windows:
     runs-on: windows-latest
@@ -40,3 +50,13 @@ jobs:
         with:
           name: twit-windows
           path: build/Release/twitc.exe
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: build/Release/twitc.exe
+          asset_name: twit-windows.exe
+          asset_content_type: application/octet-stream
